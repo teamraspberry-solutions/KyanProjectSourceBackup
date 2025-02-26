@@ -28,6 +28,7 @@ def main():
             print("No speech detected. Please try again.")
             continue  # Continue the loop if no speech is detected
 
+        #printing the speech 
         print(f"Recognized Speech: {user_speech}")
 
         # Check if the user wants to exit the conversation
@@ -39,6 +40,7 @@ def main():
         # Perform sentiment analysis on the speech input
         sentiment_output = analyze_sentiment(user_speech)
 
+        #printing the sentiment scores 
 
         print(f"Overall Sentiment: {sentiment_output['overall_sentiment']}")
         print(f"Confidence Scores: {sentiment_output['confidence_scores']}")

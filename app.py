@@ -1,11 +1,15 @@
 import time
 import threading
 import psycopg2
+import cv2
+import sys
+import mediapipe as mp
 from backend.speech_processing import SpeechProcessor
 from database.database import KyanDatabase
 from backend.focus_tracker import FocusTracker
 from backend.sentiment_analysis import SentimentAnalyzer
 from backend.conversation_manager import ConversationManager
+from backend.emotion_display import EmotionDisplay
 from backend.utils import get_current_timestamp
 from backend.error_handler import ErrorHandler
 from backend.config import STANDBY_TIMEOUT, CLOUD_DB_HOST, CLOUD_DB_PORT, CLOUD_DB_NAME, CLOUD_DB_USER, CLOUD_DB_PASSWORD, SYNC_INTERVAL, SYNC_TABLES, LOCAL_DB_PATH
@@ -20,15 +24,15 @@ class KyanBot:
         self.sentiment_analyzer = SentimentAnalyzer()
         self.conversation_manager = ConversationManager(self.db)
         self.error_handler = ErrorHandler()
-        
+        self.emotion_display = EmotionDisplay()
+
         self.characteristic_mode = 1  # Default: Friendly mode
         self.in_study_mode = False
         self.last_interaction_time = time.time()
         self.running = True
         self.standby_mode = False
 
-        # Start background threads
-        threading.Thread(target=self.run_sentiment_analysis_loop, daemon=True).start()
+        print("Kyan is starting...")
 
     def run(self):
         """Main loop for KyanBot."""
@@ -38,7 +42,7 @@ class KyanBot:
                 # Enter standby mode if no interaction for STANDBY_TIMEOUT seconds
                 if time.time() - self.last_interaction_time > STANDBY_TIMEOUT:
                     self.enter_standby_mode()
-                
+
                 # Listen for user input
                 user_input = self.speech.recognize_speech()
                 if not user_input:
@@ -52,12 +56,16 @@ class KyanBot:
             except Exception as e:
                 self.error_handler.log_error(e)
 
-    def run_sentiment_analysis_loop(self):
-        """Runs sentiment analysis every 60 seconds in Friendly Mode."""
-        while self.running:
-            if self.characteristic_mode == 1:  # Only run in Friendly Mode
-                self.sentiment_analyzer.periodic_sentiment_analysis()
-            time.sleep(5)
+    # def run_sentiment_analysis_loop(self):
+    #         """Runs sentiment analysis every 60 seconds in Friendly Mode."""
+    #         while self.running:
+    #             if self.characteristic_mode == 1:  # Only run in Friendly Mode
+    #                 self.sentiment_analyzer.periodic_sentiment_analysis()
+    #             time.sleep(60)
+
+    def update_emotion_display(self, emotion):
+        """Transitions from live display to detected emotion smoothly."""
+        self.emotion_display.transition_to_emotion(emotion)
 
     def enter_standby_mode(self):
         """Puts the bot in standby mode and listens for 'Hey Kyan'."""
@@ -67,17 +75,21 @@ class KyanBot:
 
         while self.standby_mode:
             wake_word = self.speech.recognize_speech()
-            if wake_word and "hey." in wake_word.lower():
+            if wake_word and "hey" in wake_word.lower():
                 self.standby_mode = False
                 print("Kyan has been awakened!")
                 self.speak("Hello there!")
                 return
+
 
     def process_input(self, user_input):
         """Processes user input and determines the appropriate response."""
         print(f"User said: {user_input}")
 
         user_input_lower = user_input.lower()
+        # Analyze sentiment right after getting user input
+        sentiment = self.sentiment_analyzer.analyze_sentiment(user_input)
+        self.sentiment_analyzer.save_sentiment_to_db(sentiment)
 
         # Wake-up phrase while in standby mode
         if self.standby_mode and "hey." in user_input_lower:
@@ -154,6 +166,7 @@ class KyanBot:
         session_id = self.db.insert_session()
 
         # Start focus tracking (runs every 30 sec)
+        self.focus_tracker = FocusTracker()
         focus_thread = threading.Thread(target=self.focus_tracker.track_focus, args=(session_id,))
         focus_thread.daemon = True
         focus_thread.start()
@@ -165,18 +178,31 @@ class KyanBot:
         if not self.in_study_mode:
             self.speak("No active study session found.")
             return
-
+        
         self.in_study_mode = False
         self.characteristic_mode = 1
         self.db.end_session()  # Ends the most recent session
 
+        if hasattr(self, "focus_tracker"):
+            self.focus_tracker.stop()
+            self.focus_thread.join()  # Ensure the thread stops properly
+
         self.speak("Study session ended. How else can I assist you?")
 
     def shutdown_bot(self):
-        """Shuts down the bot safely."""
-        self.running = False
+        """Shuts down the bot safely and closes the emotion display."""
+        self.running = False  # Stop main loop
         self.speak("Goodbye! Shutting down now.")
+  
+        # Stop emotion display properly
+        cv2.destroyAllWindows()
+        self.emotion_display.stop_display()  # Close the OpenCV window
+
+        # Sync database before shutting down
+        self.sync_to_cloud()
+
         print("Kyan has been turned off.")
+        sys.exit(0)  # Force exit
 
     def speak(self, text):
         """Converts text to speech and speaks it."""
@@ -186,8 +212,10 @@ class KyanBot:
         self.last_interaction_time = time.time()
 
 
+
+
     def sync_to_cloud(self):
-        """Sync local SQLite database to cloud PostgreSQL database."""
+        """Sync local SQLite database to cloud PostgreSQL database with primary key enforcement and duplication handling."""
         
         # Connect to the cloud database
         conn = psycopg2.connect(
@@ -220,10 +248,13 @@ class KyanBot:
 
                 boolean_columns = set()
 
-                
+                # Set first column as primary key
+                primary_key_column = columns[0][1]  # First column name
+
                 for col in columns:
                     col_name = col[1]
                     col_type = col[2].upper()
+
                     if "INT" in col_type:
                         col_type = "INTEGER"
                     elif "TEXT" in col_type:
@@ -233,8 +264,12 @@ class KyanBot:
                         boolean_columns.add(col_name)
                     elif "REAL" in col_type:
                         col_type = "FLOAT"
+
+                    if col_name == primary_key_column:
+                        column_defs.append(f'"{col_name}" {col_type} PRIMARY KEY')
+                    else:
+                        column_defs.append(f'"{col_name}" {col_type}')
                     
-                    column_defs.append(f'"{col_name}" {col_type}')
                     column_names.append(f'"{col_name}"')
 
                 column_defs_str = ", ".join(column_defs)
@@ -265,18 +300,22 @@ class KyanBot:
 
                 if rows:
                     placeholders = ",".join(["%s"] * len(rows[0]))
-                    insert_query = f'INSERT INTO "{table}" ({column_names_str}) VALUES ({placeholders})'
 
-
+                    # Insert with ON CONFLICT DO NOTHING to avoid duplicates
+                    insert_query = f'''
+                        INSERT INTO "{table}" ({column_names_str})
+                        VALUES ({placeholders})
+                        ON CONFLICT ("{primary_key_column}") DO NOTHING
+                    '''
 
                     for row in rows:
-
                         row = list(row)
 
                         # Convert boolean-like integers (0/1) to True/False
                         for i, col_name in enumerate(column_names):
                             if col_name.strip('"') in boolean_columns:
                                 row[i] = bool(row[i])
+
                         cursor.execute(insert_query, row)
 
                 sqlite_conn.close()
@@ -288,6 +327,7 @@ class KyanBot:
         conn.commit()
         cursor.close()
         conn.close()
+
 
 
     def periodic_sync(self):

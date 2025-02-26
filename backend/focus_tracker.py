@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import math
 import time
+import threading
 from database.database import KyanDatabase  # Assuming the database.py is in the same directory
 
 class FocusTracker:
@@ -21,6 +22,8 @@ class FocusTracker:
         # Retrieve the latest session_id
         self.db.cursor.execute("SELECT session_id FROM session ORDER BY start_time DESC LIMIT 1")
         result = self.db.cursor.fetchone()
+
+        self.stop_event = threading.Event()  # Add stop event
 
         if result is None:
             print("No active session found!")
@@ -69,7 +72,7 @@ class FocusTracker:
         return score >= 0.7  # Threshold to decide focus
 
     def track_focus(self, session_id):
-        while self.cap.isOpened():
+        while self.cap.isOpened() and not self.stop_event.is_set():
             ret, frame = self.cap.read()
             if not ret:
                 break
@@ -99,7 +102,7 @@ class FocusTracker:
             cv2.putText(frame, f"Focused: {isFocused}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
             cv2.imshow("Focus Tracker", frame)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & 0xFF == ord('q') or self.stop_event.is_set():
                 break
 
             # Wait 30 seconds before checking focus again
@@ -110,4 +113,9 @@ class FocusTracker:
         self.db.conn.commit()
 
         self.cap.release()
-        cv2.destroyAllWindows()
+
+
+    def stop(self):
+        """Stops focus tracking and releases the camera."""
+        self.stop_event.set()  
+        self.cap.release()  

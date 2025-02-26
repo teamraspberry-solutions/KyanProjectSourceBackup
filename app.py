@@ -28,6 +28,8 @@ class KyanBot:
 
         self.characteristic_mode = 1  # Default: Friendly mode
         self.in_study_mode = False
+        self.in_pomodoro_session = False
+        self.break_scheduled =False
         self.last_interaction_time = time.time()
         self.running = True
         self.standby_mode = False
@@ -67,20 +69,28 @@ class KyanBot:
         """Transitions from live display to detected emotion smoothly."""
         self.emotion_display.transition_to_emotion(emotion)
 
-    def enter_standby_mode(self):
+    def enter_standby_mode(self, duration=None):
         """Puts the bot in standby mode and listens for 'Hey Kyan'."""
         if not self.standby_mode:
             self.standby_mode = True
             print("Kyan is now in standby mode...")
 
+        start_time = time.time()
+
         while self.standby_mode:
+            if duration and (time.time() - start_time) >= duration:
+                print("Break over")
+                self.standby_mode = False
+                return
+
             wake_word = self.speech.recognize_speech()
             if wake_word and "hey" in wake_word.lower():
                 self.standby_mode = False
                 print("Kyan has been awakened!")
-                self.speak("Hello there!")
+                self.speak("Hello there!")                
                 return
-
+            
+            time.sleep(1)  # Prevents high CPU usage
 
     def process_input(self, user_input):
         """Processes user input and determines the appropriate response."""
@@ -116,6 +126,16 @@ class KyanBot:
         # Recap Last Session (Only in Study Mode)
         if self.characteristic_mode == 2 and "recap the last session" in user_input_lower:
             self.generate_recap()
+            return
+        
+        #start a pomodoro session (Only in Study Mode)
+        if "start a pomodoro session" in user_input_lower or "pomodoro." in user_input_lower:
+            self.start_pomodoro_session()
+            return
+        
+        #stop a pomodoro session (Only in Study Mode)
+        if "end a pomodoro session" in user_input_lower or "end pomodoro session." in user_input_lower:
+            self.stop_pomodoro_session()
             return
 
         # End Study Session
@@ -218,6 +238,7 @@ class KyanBot:
 
         self.in_study_mode = True
         self.characteristic_mode = 2
+        self.in_pomodoro_session = False
         session_id = self.db.insert_session()
 
         # Start focus tracking (runs every 30 sec)
@@ -228,6 +249,70 @@ class KyanBot:
 
         self.speak("Study session started. Stay focused!")
 
+    def start_pomodoro_session(self, focus_time=15, break_time=5):
+        """Starts a Pomodoro session (only accessible in study session)."""
+        if not self.in_study_mode:
+            self.speak("You need to start a study session before entering Pomodoro mode.")
+            return
+        
+        if self.in_pomodoro_session:
+            self.speak("You're already in a Pomodoro session.")
+            return
+
+        self.in_pomodoro_session = True
+        self.speak(f"Starting Pomodoro session. Focus for {focus_time} minutes.")
+
+        def pomodoro_cycle():
+            while self.in_pomodoro_session:
+                print("Focus time! Stay focused.")
+                time.sleep(focus_time)  
+
+                if not self.in_pomodoro_session:
+                    return  
+                
+                print("Break time incoming... waiting for response to finish.")
+                
+                if self.is_speaking:
+                    self.break_scheduled = True
+                    self.scheduled_break_time = break_time
+                    return  # Wait until `speak()` finishes
+
+                #Otherwise, start break immediately
+                self.start_break_mode(break_time)
+
+        pomodoro_thread = threading.Thread(target=pomodoro_cycle, daemon=True)
+        pomodoro_thread.start()
+
+    def start_break_mode(self, break_time):
+        """Starts the break mode after the current response is done."""
+        if not self.in_pomodoro_session:
+            return  
+        
+        print("Break time! You can relax now.")
+        self.speak(f"Break time for {break_time} minutes. I'm entering standby mode.")
+
+        self.enter_standby_mode(duration=break_time)  # Standby during break
+
+        if not self.in_pomodoro_session:
+            return  
+        
+        print("Break is over! Back to focus mode.")
+        self.speak("Break is over! Let's get back to work.")
+    
+        self.restart_pomodoro_session()
+
+    def restart_pomodoro_session(self):
+        """Restarts Pomodoro session automatically after a break."""
+        self.in_pomodoro_session = False  # Reset before restarting
+        self.speak("Focus time begins now.")
+        self.start_pomodoro_session()  # Restart fresh
+            
+    def stop_pomodoro_session(self):
+        """Stops the Pomodoro session but keeps study mode active."""
+        if self.in_pomodoro_session:
+            self.in_pomodoro_session = False
+            self.speak("Pomodoro session stopped. You are still in study mode.")
+
     def end_study_session(self):
         """Deactivates study mode and re-enables friendly mode."""
         if not self.in_study_mode:
@@ -235,21 +320,24 @@ class KyanBot:
             return
         
         self.in_study_mode = False
+        self.in_pomodoro_session = False
         self.characteristic_mode = 1
         self.db.end_session()  # Ends the most recent session
+        self.speak("Study session ended. How else can I assist you?")
 
         if hasattr(self, "focus_tracker"):
             self.focus_tracker.stop()
             self.focus_thread.join()  # Ensure the thread stops properly
 
-        self.speak("Study session ended. How else can I assist you?")
+        
 
 
     def shutdown_bot(self):
         """Shuts down the bot safely and closes the emotion display."""
         self.running = False  # Stop main loop
-        self.sync_to_cloud()
         self.speak("Goodbye! Shutting down now.")
+        self.sync_to_cloud()
+        
         print("Kyan has been turned off.")
         sys.exit(0)  # Force exit
   
@@ -263,15 +351,30 @@ class KyanBot:
         # print("Kyan has been turned off.")
         # sys.exit(0)  # Force exit
 
-    def speak(self, text):
-        """Converts text to speech and speaks it."""
+    def speak(self, text, force_stop=False):
+        """Converts text to speech and speaks it. Waits until the response finishes before going into break mode."""
+        if force_stop:
+            return  # Prevent any new speech
+
+        self.is_speaking = True
         print(f"Kyan says: {text}")
         self.speech.text_to_speech(text)
 
         self.last_interaction_time = time.time()
 
+        time.sleep(min(len(text) * 0.05, 5))  # Simulated speech delay
 
+        self.is_speaking = False  # Now speaking is fully finished
 
+        # If a break was scheduled, start it now
+        if self.break_scheduled:
+            self.break_scheduled = False
+            self.start_break_mode(self.scheduled_break_time)
+
+    def stop_speaking(self):
+        """Immediately stops any ongoing speech."""
+        print("[Speech Stopped]")  # Replace with actual stop command
+        self.is_speaking = False
 
     def sync_to_cloud(self):
         """Sync local SQLite database to cloud PostgreSQL database with primary key enforcement and duplication handling."""

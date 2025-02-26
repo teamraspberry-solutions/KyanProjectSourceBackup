@@ -7,8 +7,6 @@ from services.database_service import get_user_id, insert_conversation, insert_n
 def main():
     print("Starting continuous listening for your input...")
 
-    # Use a direct user_id (this could be dynamically generated or retrieved from somewhere)
-    user_id = 1234  # Use an example user ID here
 
     # Get or insert the user in the database
     existing_user_id = get_user_id(user_id)

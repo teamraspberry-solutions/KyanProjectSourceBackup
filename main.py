@@ -2,7 +2,7 @@ from services.speech_to_text import recognize_speech
 from services.sentiment_analysis import analyze_sentiment
 from services.chatbot_service import get_chatbot_response
 from services.text_to_speech import text_to_speech
-from services.database_service import get_user_id, insert_conversation, insert_new_user
+
 
 def main():
     print("Starting continuous listening for your input...")

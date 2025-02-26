@@ -33,6 +33,8 @@ def analyze_sentiment(text: str) -> dict:
         "negative_sentences": []
     }
 
+
+    # sentiment 
     if docs:
         doc = docs[0]
         sentiment_result["overall_sentiment"] = doc.sentiment

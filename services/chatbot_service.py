@@ -21,7 +21,6 @@ def get_chatbot_response(user_input: str, user_id: int) -> str:
     if user_id not in conversation_context:
         conversation_context[user_id] = [
             {"role": "system", "content": """You are Kyan, a friendly and supportive assistant. 
-                                             Your tone should be casual and friendly. 
                                              You help students with their learning and mental health, so your responses should be short and easy to understand."""}
         ]
 
@@ -46,7 +45,7 @@ def get_chatbot_response(user_input: str, user_id: int) -> str:
         # Add the assistant's reply to the conversation context
         conversation_context[user_id].append({"role": "assistant", "content": assistant_reply})
 
-        # Store the conversation in the database after certain number of exchanges or session ends
+   
         if len(conversation_context[user_id]) > 20:  # Example limit for storing conversation
             # Store the conversation in the database
             store_conversation(user_id, conversation_context[user_id])

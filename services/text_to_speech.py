@@ -5,9 +5,7 @@ speech_key, service_region = "EHi9ZkNkweMbzx6tOwtS7IyL4kgGvGF2uzmqDwa9q7dxtPOVrt
 speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
 
 def text_to_speech(text: str):
-    """
-    Converts the given text to speech using Azure's Text-to-Speech service with the 'Jenny' voice.
-    """
+    
     # Create an instance of a speech config with the Azure API key and region
     speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=service_region)
     

@@ -32,6 +32,8 @@ class KyanBot:
         self.running = True
         self.standby_mode = False
 
+        threading.Thread(target=self.run_sentiment_analysis_loop, daemon=True).start()
+
         print("Kyan is starting...")
 
     def run(self):
@@ -56,16 +58,16 @@ class KyanBot:
             except Exception as e:
                 self.error_handler.log_error(e)
 
-    # def run_sentiment_analysis_loop(self):
-    #         """Runs sentiment analysis every 60 seconds in Friendly Mode."""
-    #         while self.running:
-    #             if self.characteristic_mode == 1:  # Only run in Friendly Mode
-    #                 self.sentiment_analyzer.periodic_sentiment_analysis()
-    #             time.sleep(60)
+    def run_sentiment_analysis_loop(self):
+            """Runs sentiment analysis every 60 seconds in Friendly Mode."""
+            while self.running:
+                if self.characteristic_mode == 1:  # Only run in Friendly Mode
+                    self.sentiment_analyzer.periodic_sentiment_analysis()
+                time.sleep(60)
 
     def update_emotion_display(self, emotion):
         """Transitions from live display to detected emotion smoothly."""
-        self.emotion_display.transition_to_emotion(emotion)
+        self.emotion_display.set_emotion(emotion)
 
     def enter_standby_mode(self):
         """Puts the bot in standby mode and listens for 'Hey Kyan'."""
@@ -87,9 +89,6 @@ class KyanBot:
         print(f"User said: {user_input}")
 
         user_input_lower = user_input.lower()
-        # Analyze sentiment right after getting user input
-        sentiment = self.sentiment_analyzer.analyze_sentiment(user_input)
-        self.sentiment_analyzer.save_sentiment_to_db(sentiment)
 
         # Wake-up phrase while in standby mode
         if self.standby_mode and "hey." in user_input_lower:
@@ -113,11 +112,6 @@ class KyanBot:
             self.start_study_session()
             return
         
-        # Recap Last Session (Only in Study Mode)
-        if self.characteristic_mode == 2 and "recap the last session" in user_input_lower:
-            self.generate_recap()
-            return
-
         # End Study Session
         if "end the study session" in user_input_lower or "stop studying" in user_input_lower:
             self.end_study_session()
@@ -131,6 +125,7 @@ class KyanBot:
         # Process General Conversation
         response = self.generate_response(user_input)
         self.speak(response)
+    
 
 
     def generate_response(self, user_input):
@@ -163,7 +158,7 @@ class KyanBot:
         elif self.characteristic_mode == 2:  # Study Mode
             session_id = self.db.get_active_session_id()  # Fetch active session ID
             if session_id is None:
-                print(" Warning: No active study session found while storing conversation.")
+                print("⚠ Warning: No active study session found while storing conversation.")
 
             self.conversation_manager.add_characteristic2_conversation(
                 conversation=user_input,
@@ -179,36 +174,6 @@ class KyanBot:
             )
 
         return response
-    
-    def generate_recap(self):
-        """Fetches conversation history and context from the last session and generates a recap."""
-        last_session_id = self.db.get_last_completed_session_id()  # Get the session before the current one
-        if last_session_id is None:
-            self.speak("I couldn't find any past study sessions to recap.")
-            return
-
-        # Retrieve conversation history of the last session
-        conversation_history = self.db.get_characteristic2_conversation_history(last_session_id)
-
-        # Retrieve recap details from recapKyan table
-        recap_details = self.db.get_recap_details(last_session_id)  
-
-        if not conversation_history:
-            self.speak("No conversation history found for the last session.")
-            return
-        
-        if not conversation_history and recap_details == "No additional context available.":
-            self.speak("I couldn't find any useful details from the last session to summarize.")
-            return
-
-        context = f"Session ID: {last_session_id}\nRecap Context: {recap_details}\n"
-        context += "Conversation History:\n" + "\n".join(conversation_history)
-
-        # Use a separate chatbot model or prompt format for summarization
-        recap_message = self.speech.generate_recap_summary(context)
-
-        self.speak(recap_message)
-
 
     def start_study_session(self):
         """Activates study mode, enabling focus tracking and disabling sentiment analysis."""
@@ -244,24 +209,17 @@ class KyanBot:
 
         self.speak("Study session ended. How else can I assist you?")
 
-
     def shutdown_bot(self):
         """Shuts down the bot safely and closes the emotion display."""
         self.running = False  # Stop main loop
-        self.sync_to_cloud()
         self.speak("Goodbye! Shutting down now.")
+        self.emotion_display.stop_display()
+
+        # Sync database before shutting down
+        self.sync_to_cloud()
+
         print("Kyan has been turned off.")
-        sys.exit(0)  # Force exit
-  
-        #  Stop emotion display properly
-        # cv2.destroyAllWindows()
-        
-        # self.emotion_display.stop_display()  # Close the OpenCV window
 
-        # # Sync database before shutting down
-
-        # print("Kyan has been turned off.")
-        # sys.exit(0)  # Force exit
 
     def speak(self, text):
         """Converts text to speech and speaks it."""
@@ -299,7 +257,7 @@ class KyanBot:
                 columns = sqlite_cursor.fetchall()  # [(cid, name, type, notnull, dflt_value, pk), ...]
 
                 if not columns:
-                    print(f"Skipping {table}: No columns found in SQLite.")
+                    print(f"⚠ Skipping {table}: No columns found in SQLite.")
                     continue
 
                 column_defs = []

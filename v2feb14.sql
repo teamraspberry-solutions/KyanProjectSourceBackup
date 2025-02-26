@@ -1,2 +1,4 @@
 -- SQLite
-ALTER TABLE characteristic2_conversation_history ADD COLUMN session_id INTEGER;
+
+SELECT name FROM sqlite_master WHERE type='table';
+PRAGMA table_info(session);

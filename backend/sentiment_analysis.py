@@ -20,9 +20,6 @@ class SentimentAnalyzer:
             "negative": "sad"
         }
 
-        # Start sentiment analysis loop
-        self.analysis_thread = threading.Thread(target=self.periodic_sentiment_analysis, daemon=True)
-        self.analysis_thread.start()
 
     def analyze_sentiment(self, text):
         """Analyzes sentiment using Azure API and triggers an emotion display."""
@@ -43,12 +40,23 @@ class SentimentAnalyzer:
             sentiment = response_data['documents'][0]['sentiment']
             scores = response_data['documents'][0]['confidenceScores']
 
-            # Refined emotion mapping
-            if sentiment == "negative":
-                detected_emotion = "angry" if scores["negative"] > 0.8 else "sad"
-            elif sentiment == "positive":
-                detected_emotion = "happy"
+            # Define thresholds for emotions based on sentiment scores
+            if sentiment == "positive":
+                if scores["positive"] > 0.8:  # Strong positive sentiment
+                    detected_emotion = "happy"
+                elif scores["positive"] > 0.4:  # Moderate positive sentiment
+                    detected_emotion = "surprised"
+                else:
+                    detected_emotion = "neutral"
+            elif sentiment == "negative":
+                if scores["negative"] > 0.95:  # Strong negative sentiment
+                    detected_emotion = "angry"
+                elif scores["negative"] > 0.4:  # Moderate negative sentiment
+                    detected_emotion = "sad"
+                else:
+                    detected_emotion = "neutral"
             else:
+                # Neutral sentiment case
                 detected_emotion = "neutral"
 
             # Update Emotion Display
@@ -58,6 +66,7 @@ class SentimentAnalyzer:
         except Exception as e:
             print(f"Sentiment Analysis Error: {e}")
             return "neutral"
+
 
     def save_sentiment_to_db(self, sentiment):
         """Saves analyzed sentiment to the database."""
@@ -82,3 +91,4 @@ class SentimentAnalyzer:
     #             print(f"Error in periodic sentiment analysis: {e}")
 
     #         time.sleep(10)
+

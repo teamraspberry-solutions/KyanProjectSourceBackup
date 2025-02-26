@@ -8,8 +8,6 @@ def main():
     print("Starting continuous listening for your input...")
 
 
-    # Get or insert the user in the database
-    existing_user_id = get_user_id(user_id)
 
     if not existing_user_id:
         # If the user doesn't exist, insert them into the UserProfiles table

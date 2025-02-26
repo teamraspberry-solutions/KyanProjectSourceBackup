@@ -16,7 +16,16 @@ def main():
             print("Error inserting new user. Exiting.")
             return  # Stop the program if user creation fails
 
+    
+    
     while True:
+        # Listen for speech input from the user
+        user_speech = recognize_speech()
+        while True:
+        # Listen for speech input from the user
+        user_speech = recognize_speech()
+        
+        while True:
         # Listen for speech input from the user
         user_speech = recognize_speech()
 

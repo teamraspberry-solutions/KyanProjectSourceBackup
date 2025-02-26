@@ -1,0 +1,31 @@
+Got it! I'll focus only on the bot's backend, ensuring everything is efficient, standalone, and optimized for Raspberry Pi 4.
+
+Here’s the updated project structure:
+
+📂 kyan-bot/ (Root Project Folder)
+├── 📂 backend/ (Python-based backend services & bot logic)
+│ ├── app.py (Main bot script, manages STT, TTS, chatbot, and characteristic switching)
+│ ├── focus_tracker.py (Handles focus detection every 30 sec in study mode)
+│ ├── sentiment_analysis.py (Runs sentiment tracking every minute in friendly mode)
+│ ├── database.py (Manages SQLite storage & cloud syncing with PostgreSQL)
+│ ├── speech_processing.py (Handles STT, TTS with Azure API)
+│ ├── conversation_manager.py (Processes & temporarily stores conversations before DB write)
+│ ├── error_handler.py (Centralized error handling & logging system)
+│ ├── config.py (Stores API keys, database settings, and configurable parameters)
+│ ├── requirements.txt (Python dependencies like azure-cognitiveservices, sqlite3, mediapipe)
+│ └── utils.py (Helper functions: timestamping, formatting, etc.)
+│
+├── 📂 database/ (Stores local SQLite DB files before cloud sync)
+│ ├── kyan_local.db (SQLite3 database file)
+│ ├── 📂 backup/ (Folder for periodic database backups)
+│
+└── README.md (Project documentation & setup guide)
+
+✅ Next Steps
+Set up the SQLite database (database.py) with tables.
+Write the app.py bot logic (listening for trigger phrases & switching modes).
+Implement Azure-based speech_processing.py (STT & TTS).
+Develop focus_tracker.py (Mediapipe-based focus detection).
+Integrate sentiment_analysis.py (Azure-based analysis every minute).
+Optimize conversation_manager.py (store conversations efficiently).
+Ensure robust error handling (error_handler.py) and logging.

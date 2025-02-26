@@ -10,8 +10,6 @@ def main():
     # Use a direct user_id (this could be dynamically generated or retrieved from somewhere)
     user_id = 1234  # Use an example user ID here
 
-    # Get or insert the user in the database
-    existing_user_id = get_user_id(user_id)
 
     if not existing_user_id:
         # If the user doesn't exist, insert them into the UserProfiles table

@@ -75,7 +75,15 @@ class KyanDatabase:
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
                 conversation TEXT NOT NULL,
                 conversation_type TEXT NOT NULL,  -- 'user' or 'bot'
-                user_id INTEGER DEFAULT 1  -- Placeholder for future user-specific tracking
+                user_id INTEGER DEFAULT 1,  -- Placeholder for future user-specific tracking
+                session_id INTEGER,  -- New column to link to session_id
+                FOREIGN KEY (session_id) REFERENCES session(session_id)  -- Foreign key constraint
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS recapKyan (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                detail TEXT NOT NULL
             )
             """
         ]
@@ -135,11 +143,11 @@ class KyanDatabase:
         self.conn.commit()
 
 
-    def insert_characteristic2_history(self, conversation, conversation_type, user_id):
-        """Logs friendly mode conversation history with conversation type and user ID."""
+    def insert_characteristic2_history(self, conversation, conversation_type, user_id, session_id):
+        """Logs friendly mode conversation history with conversation type, user ID, and session ID."""
         self.cursor.execute(
-            "INSERT INTO characteristic1_conversation_history (conversation, conversation_type, user_id) VALUES (?, ?, ?)",
-            (conversation, conversation_type, user_id)
+            "INSERT INTO characteristic2_conversation_history (conversation, conversation_type, user_id, session_id) VALUES (?, ?, ?, ?)",
+            (conversation, conversation_type, user_id, session_id)
         )
         self.conn.commit()
 
@@ -177,3 +185,41 @@ class KyanDatabase:
         )
         result = self.cursor.fetchone()
         return result[0] if result else None
+
+    def get_active_session_id(self):
+        """Fetch the most recent session ID from the session table."""
+        self.cursor.execute("SELECT session_id FROM session ORDER BY start_time DESC LIMIT 1")
+        return self.cursor.fetchone()
+    
+
+    def get_last_completed_session_id(self):
+        """Fetches the session ID of the last completed study session (excluding the current active one)."""
+        self.cursor.execute("""
+            SELECT session.session_id FROM session  -- Explicitly mention table name
+            WHERE end_time IS NOT NULL
+            ORDER BY end_time DESC
+            LIMIT 1 OFFSET 1
+        """)
+        result = self.cursor.fetchone()
+        return result[0] if result else None
+
+
+
+    def get_characteristic2_conversation_history(self, session_id):
+        """Fetches conversation history for a given study session ID."""
+        self.cursor.execute("""
+            SELECT conversation FROM characteristic2_conversation_history 
+            WHERE session_id = ? 
+            ORDER BY timestamp ASC
+        """, (session_id,))
+        return [row[0] for row in self.cursor.fetchall()]
+
+
+    def get_recap_details(self, session_id):
+        """Fetches the recap details from recapKyan table for a given session ID."""
+        self.cursor.execute("""
+            SELECT detail FROM recapKyan 
+            WHERE session_id = ?
+        """, (session_id,))
+        result = self.cursor.fetchone()
+        return result[0] if result and result[0] else "No additional context available."

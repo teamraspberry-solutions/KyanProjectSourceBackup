@@ -112,6 +112,11 @@ class KyanBot:
         if "start a study session" in user_input_lower or "let's study" in user_input_lower:
             self.start_study_session()
             return
+        
+        # Recap Last Session (Only in Study Mode)
+        if self.characteristic_mode == 2 and "recap the last session" in user_input_lower:
+            self.generate_recap()
+            return
 
         # End Study Session
         if "end the study session" in user_input_lower or "stop studying" in user_input_lower:
@@ -139,21 +144,71 @@ class KyanBot:
 
         response = self.speech.generate_chatbot_response(user_input, context)
 
-        # Store both user input and bot response in temporary cache
-        self.conversation_manager.add_conversation(
-            conversation=user_input, 
-            mode=self.characteristic_mode, 
-            conversation_type='user', 
-            user_id=1  # Assume user_id is 1 for this example
-        )
-        self.conversation_manager.add_conversation(
-            conversation=response, 
-            mode=self.characteristic_mode, 
-            conversation_type='kyan', 
-            user_id=1  # Assume user_id is 1 for this example
-        )
+        # Identify user ID (assume 1 for now)
+        user_id = 1  
+
+        # Add conversation history based on the current characteristic mode
+        if self.characteristic_mode == 1:  # Friendly Mode
+            self.conversation_manager.add_characteristic1_conversation(
+                conversation=user_input,
+                conversation_type='user',
+                user_id=user_id
+            )
+            self.conversation_manager.add_characteristic1_conversation(
+                conversation=response,
+                conversation_type='kyan',
+                user_id=user_id
+            )
         
+        elif self.characteristic_mode == 2:  # Study Mode
+            session_id = self.db.get_active_session_id()  # Fetch active session ID
+            if session_id is None:
+                print(" Warning: No active study session found while storing conversation.")
+
+            self.conversation_manager.add_characteristic2_conversation(
+                conversation=user_input,
+                conversation_type='user',
+                session_id=session_id,
+                user_id=user_id
+            )
+            self.conversation_manager.add_characteristic2_conversation(
+                conversation=response,
+                conversation_type='kyan',
+                session_id=session_id,
+                user_id=user_id
+            )
+
         return response
+    
+    def generate_recap(self):
+        """Fetches conversation history and context from the last session and generates a recap."""
+        last_session_id = self.db.get_last_completed_session_id()  # Get the session before the current one
+        if last_session_id is None:
+            self.speak("I couldn't find any past study sessions to recap.")
+            return
+
+        # Retrieve conversation history of the last session
+        conversation_history = self.db.get_characteristic2_conversation_history(last_session_id)
+
+        # Retrieve recap details from recapKyan table
+        recap_details = self.db.get_recap_details(last_session_id)  
+
+        if not conversation_history:
+            self.speak("No conversation history found for the last session.")
+            return
+        
+        if not conversation_history and recap_details == "No additional context available.":
+            self.speak("I couldn't find any useful details from the last session to summarize.")
+            return
+
+        context = f"Session ID: {last_session_id}\nRecap Context: {recap_details}\n"
+        context += "Conversation History:\n" + "\n".join(conversation_history)
+
+        # Use a separate chatbot model or prompt format for summarization
+        recap_message = self.speech.generate_recap_summary(context)
+
+        self.speak(recap_message)
+
 
     def start_study_session(self):
         """Activates study mode, enabling focus tracking and disabling sentiment analysis."""
@@ -189,20 +244,24 @@ class KyanBot:
 
         self.speak("Study session ended. How else can I assist you?")
 
+
     def shutdown_bot(self):
         """Shuts down the bot safely and closes the emotion display."""
         self.running = False  # Stop main loop
-        self.speak("Goodbye! Shutting down now.")
-  
-        # Stop emotion display properly
-        cv2.destroyAllWindows()
-        self.emotion_display.stop_display()  # Close the OpenCV window
-
-        # Sync database before shutting down
         self.sync_to_cloud()
-
+        self.speak("Goodbye! Shutting down now.")
         print("Kyan has been turned off.")
         sys.exit(0)  # Force exit
+  
+        #  Stop emotion display properly
+        # cv2.destroyAllWindows()
+        
+        # self.emotion_display.stop_display()  # Close the OpenCV window
+
+        # # Sync database before shutting down
+
+        # print("Kyan has been turned off.")
+        # sys.exit(0)  # Force exit
 
     def speak(self, text):
         """Converts text to speech and speaks it."""
@@ -240,7 +299,7 @@ class KyanBot:
                 columns = sqlite_cursor.fetchall()  # [(cid, name, type, notnull, dflt_value, pk), ...]
 
                 if not columns:
-                    print(f"⚠ Skipping {table}: No columns found in SQLite.")
+                    print(f"Skipping {table}: No columns found in SQLite.")
                     continue
 
                 column_defs = []

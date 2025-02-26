@@ -6,26 +6,16 @@ from database.database import KyanDatabase
 class ConversationManager:
     def __init__(self, db):
         self.db = db
-        self.characteristic1_conversations = []  # Temporary storage for characteristic1
-        self.characteristic2_conversations = []  # Temporary storage for characteristic2
-        self.saving_thread = Thread(target=self.save_conversations_periodically, daemon=True)
+        self.conversations = []  # Array to hold conversations temporarily
+        self.saving_thread = Thread(target=self.save_conversations_periodically)
         self.saving_thread.start()
     
-    def add_characteristic1_conversation(self, conversation, conversation_type, user_id=1):
-        """Add a conversation to the characteristic1 temporary array."""
-        self.characteristic1_conversations.append({
+    def add_conversation(self, conversation, mode, conversation_type, user_id=1):
+        """Add a conversation to the temporary array."""
+        self.conversations.append({
             'conversation': conversation,
+            'mode': mode,
             'conversation_type': conversation_type,
-            'user_id': user_id,
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
-
-    def add_characteristic2_conversation(self, conversation, conversation_type, session_id, user_id=1):
-        """Add a conversation to the characteristic2 temporary array, including session_id."""
-        self.characteristic2_conversations.append({
-            'conversation': conversation,
-            'conversation_type': conversation_type,
-            'session_id': session_id,
             'user_id': user_id,
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         })
@@ -33,27 +23,23 @@ class ConversationManager:
     def save_conversations_periodically(self):
         """Periodically save conversations to the database every 15 seconds."""
         while True:
-            if self.characteristic1_conversations:
-                while self.characteristic1_conversations:
-                    conv = self.characteristic1_conversations.pop(0)  # Process first item
-                    self.db.insert_characteristic1_history(
-                        conv['conversation'], conv['conversation_type'], conv['user_id']
-                    )
-
-            if self.characteristic2_conversations:
-                while self.characteristic2_conversations:
-                    conv = self.characteristic2_conversations.pop(0)  # Process first item
-                    
-                    # Extract session_id properly
-                    session_id = conv['session_id'][0] if isinstance(conv['session_id'], tuple) else conv['session_id']
-                    
-
-                    self.db.insert_characteristic2_history(
-                        conv['conversation'], conv['conversation_type'], conv['user_id'], int(session_id)  # Ensure session_id is an integer
-                    )
-
-            time.sleep(15)  # Wait for 15 seconds before checking again
-
+            if self.conversations:
+                # Process and save all stored conversations
+                for conv in self.conversations:
+                    self.save_conversation(conv['conversation'], conv['mode'], conv['conversation_type'], conv['user_id'], conv['timestamp'])
+                self.conversations.clear()  # Clear the temporary array after saving
+            time.sleep(15)  # Wait for 15 seconds before saving again
+    
+    def save_conversation(self, conversation, mode, conversation_type, user_id, timestamp):
+        """Save a single conversation to the appropriate table."""
+        table = "characteristic1_conversation_history" if mode == 1 else "characteristic2_conversation_history"
+        
+        # Insert conversation into the respective table
+        self.db.cursor.execute(
+            f"INSERT INTO {table} (conversation, conversation_type, user_id, timestamp) VALUES (?, ?, ?, ?)",
+            (conversation, conversation_type, user_id, timestamp)
+        )
+        self.db.conn.commit()
 
 # Instantiate the ConversationManager and Database connection
 db = KyanDatabase()

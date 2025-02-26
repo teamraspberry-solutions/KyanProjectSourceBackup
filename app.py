@@ -13,7 +13,7 @@ from backend.emotion_display import EmotionDisplay
 from backend.utils import get_current_timestamp
 from backend.error_handler import ErrorHandler
 from backend.config import STANDBY_TIMEOUT, CLOUD_DB_HOST, CLOUD_DB_PORT, CLOUD_DB_NAME, CLOUD_DB_USER, CLOUD_DB_PASSWORD, SYNC_INTERVAL, SYNC_TABLES, LOCAL_DB_PATH
-import sqlite3  # for SQLite connection
+import sqlite3  # for SQLite connectionn
 
 class KyanBot:
     def __init__(self):

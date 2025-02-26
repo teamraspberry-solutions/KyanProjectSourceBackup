@@ -154,3 +154,9 @@ class SpeechProcessor:
         except requests.RequestException as e:
             print(f"Error generating chatbot response: {e}")
             return "Sorry, I couldn't understand that. Could you please rephrase?"
+
+
+    def generate_recap_summary(self, context):
+        """Generates a summary of the last study session using a different chatbot model."""
+        prompt = f"Summarize the following study session:\n{context}\nProvide a brief, short but informative recap."
+        return self.generate_chatbot_response(prompt, context)

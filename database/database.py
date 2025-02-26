@@ -199,7 +199,7 @@ class KyanDatabase:
         if active_session_id:
             last_completed_session_id = active_session_id[0] - 1  # Subtract 1 to get the previous session ID
             return last_completed_session_id
-        return None  # Return None if there's no active session
+        return None  # Return None if there's no active session
 
 
 
